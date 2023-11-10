@@ -1,26 +1,25 @@
-pymodaq_plugins_template
-########################
+pymodaq_plugins_stanford_research_systems
+#########################################
 
 .. the following must be adapted to your developed package, links to pypi, github  description...
 
-.. image:: https://img.shields.io/pypi/v/pymodaq_plugins_template.svg
-   :target: https://pypi.org/project/pymodaq_plugins_template/
+.. image:: https://img.shields.io/pypi/v/pymodaq_plugins_stanford_research_systems.svg
+   :target: https://pypi.org/project/pymodaq_plugins_stanford_research_systems/
    :alt: Latest Version
 
 .. image:: https://readthedocs.org/projects/pymodaq/badge/?version=latest
    :target: https://pymodaq.readthedocs.io/en/stable/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_template/workflows/Upload%20Python%20Package/badge.svg
-   :target: https://github.com/PyMoDAQ/pymodaq_plugins_template
+.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_stanford_research_systems/workflows/Upload%20Python%20Package/badge.svg
+   :target: https://github.com/PyMoDAQ/pymodaq_plugins_stanford_research_systems
    :alt: Publication Status
 
-.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_template/actions/workflows/Test.yml/badge.svg
-    :target: https://github.com/PyMoDAQ/pymodaq_plugins_template/actions/workflows/Test.yml
+.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_stanford_research_systems/actions/workflows/Test.yml/badge.svg
+    :target: https://github.com/PyMoDAQ/pymodaq_plugins_stanford_research_systems/actions/workflows/Test.yml
 
 
-Use this template to create a repository on your account and start the development of your own PyMoDAQ plugin!
-
+Set of instruments from the Stanford Research Systems brand
 
 Authors
 =======
@@ -46,17 +45,16 @@ Instruments
 
 Below is the list of instruments included in this plugin
 
-Actuators
-+++++++++
-
-* **yyy**: control of yyy actuators
-* **xxx**: control of xxx actuators
+..
+    Actuators
+    +++++++++
+    * **yyy**: control of yyy actuators
+    * **xxx**: control of xxx actuators
 
 Viewer0D
 ++++++++
 
-* **yyy**: control of yyy 0D detector
-* **xxx**: control of xxx 0D detector
+* * **LockinSR830**: LockIn Amplifier SR830
 
 Viewer1D
 ++++++++
@@ -64,25 +62,25 @@ Viewer1D
 * **yyy**: control of yyy 1D detector
 * **xxx**: control of xxx 1D detector
 
-
-Viewer2D
-++++++++
-
-* **yyy**: control of yyy 2D detector
-* **xxx**: control of xxx 2D detector
-
-
-PID Models
-==========
+..
+    Viewer2D
+    ++++++++
+    * **yyy**: control of yyy 2D detector
+    * **xxx**: control of xxx 2D detector
 
 
-Extensions
-==========
+    PID Models
+    ==========
+
+
+    Extensions
+    ==========
 
 
 Installation instructions
 =========================
 
-* PyMoDAQ’s version.
-* Operating system’s version.
-* What manufacturer’s drivers should be installed to make this plugin run?
+* PyMoDAQ’s version > 4.0.8
+..
+    * Operating system’s version.
+    * What manufacturer’s drivers should be installed to make this plugin run?
