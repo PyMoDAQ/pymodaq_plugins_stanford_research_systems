@@ -24,20 +24,8 @@ Set of instruments from the Stanford Research Systems brand
 Authors
 =======
 
-* First Author  (myemail@xxx.org)
-* Other author (myotheremail@xxx.org)
+* Sebastien J. Weber  (sebastien.weber@cemes.fr)
 
-.. if needed use this field
-
-    Contributors
-    ============
-
-    * First Contributor
-    * Other Contributors
-
-.. if needed use this field
-
-  Depending on the plugin type, delete/complete the fields below
 
 
 Instruments
@@ -45,42 +33,19 @@ Instruments
 
 Below is the list of instruments included in this plugin
 
-..
-    Actuators
-    +++++++++
-    * **yyy**: control of yyy actuators
-    * **xxx**: control of xxx actuators
+
 
 Viewer0D
 ++++++++
 
 * * **LockinSR830**: LockIn Amplifier SR830
 
-Viewer1D
-++++++++
 
-* **yyy**: control of yyy 1D detector
-* **xxx**: control of xxx 1D detector
-
-..
-    Viewer2D
-    ++++++++
-    * **yyy**: control of yyy 2D detector
-    * **xxx**: control of xxx 2D detector
-
-
-    PID Models
-    ==========
-
-
-    Extensions
-    ==========
 
 
 Installation instructions
 =========================
 
-* PyMoDAQ’s version > 4.0.8
-..
-    * Operating system’s version.
-    * What manufacturer’s drivers should be installed to make this plugin run?
+* PyMoDAQ version > 4.0.8
+* VISA backend if connected using GPIB
+
