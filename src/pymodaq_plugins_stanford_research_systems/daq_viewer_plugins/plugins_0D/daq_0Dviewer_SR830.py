@@ -147,7 +147,7 @@ class DAQ_0DViewer_SR830(DAQ_Viewer_base):
         self.controller.reset_buffer()
         start = perf_counter()
         self.controller.start_buffer()
-        COUNTS = 100
+        COUNTS = 10
         self.controller.wait_for_buffer(COUNTS, timeout=60, timestep=0.01)
         print(f'acq time: {perf_counter() - start}s, should be: {COUNTS / rate}')
         ch1 = self.controller.get_buffer(1)
@@ -190,4 +190,4 @@ class DAQ_0DViewer_SR830(DAQ_Viewer_base):
 
 
 if __name__ == '__main__':
-    main(__file__)
+    main(__file__, init=False)

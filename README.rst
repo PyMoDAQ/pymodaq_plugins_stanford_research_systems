@@ -38,7 +38,7 @@ Below is the list of instruments included in this plugin
 Viewer0D
 ++++++++
 
-* * **LockinSR830**: LockIn Amplifier SR830
+* **LockinSR830**: LockIn Amplifier SR830
 
 
 

@@ -16,8 +16,24 @@ from collections import OrderedDict
 import numpy as np
 import re
 
+##checking VISA ressources
+try:
+    from pyvisa import ResourceManager
 
-class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
+    VISA_rm = ResourceManager()
+    devices = list(VISA_rm.list_resources())
+    device = ''
+    for dev in devices:
+        if 'GPIB' in dev:
+            device = dev
+            break
+except Exception as e:
+    devices = []
+    device = ''
+    raise e
+
+
+class DAQ_0DViewer_LockInSR830Legacy(DAQ_Viewer_base):
     """
         ==================== ========================
         **Attributes**        **Type**
@@ -29,23 +45,9 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
         *settings*
         ==================== ========================
     """
-    data_grabed_signal=Signal(list)
-    channels=['X', 'Y', 'MAG', 'PHA', 'Aux In 1', 'Aux In 2', 'Aux In 3', 'Aux In 4', 'Ref frequency', 'CH1 display', 'CH2 display']
-
-    ##checking VISA ressources
-    try:
-        from pyvisa import ResourceManager
-        VISA_rm = ResourceManager()
-        devices = list(VISA_rm.list_resources())
-        device = ''
-        for dev in devices:
-            if 'GPIB' in dev:
-                device = dev
-                break
-    except Exception as e:
-        devices = []
-        device = ''
-        raise e
+    data_grabed_signal = Signal(list)
+    channels = ['X', 'Y', 'MAG', 'PHA', 'Aux In 1', 'Aux In 2', 'Aux In 3', 'Aux In 4', 'Ref frequency', 'CH1 display',
+                'CH2 display']
 
     params = comon_parameters + [
         {'title': 'VISA:', 'name': 'VISA_ressources', 'type': 'list', 'limits': devices, 'value': device},
@@ -119,7 +121,8 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
                 else:
                     self.controller = controller
             else:
-                self.controller = self.VISA_rm.open_resource(self.settings.child(('VISA_ressources')).value())
+                VISA_rm = ResourceManager()
+                self.controller = VISA_rm.open_resource(self.settings.child(('VISA_ressources')).value())
 
             self.controller.timeout = self.settings.child(('timeout')).value()
             idn = self.controller.query('OUTX1;*IDN?;')
