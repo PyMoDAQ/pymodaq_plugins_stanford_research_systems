@@ -38,8 +38,15 @@ Below is the list of instruments included in this plugin
 Viewer0D
 ++++++++
 
-* **LockinSR830**: LockIn Amplifier SR830
+* **LockinSR830Legacy**: LockIn Amplifier SR830 using direct VISA SPI commands (no more maintained)
+* **LockinSR830**: LockIn Amplifier SR830 using the pymeasure SR830 driver (preferred)
 
+
+Viewer1D
+++++++++
+
+* **LockinSR830**: LockIn Amplifier SR830 using the pymeasure SR830 driver and using the internal buffer memory. Get the
+  two channels outputs. Should be fast but is in fact quite slow...
 
 
 
@@ -48,4 +55,5 @@ Installation instructions
 
 * PyMoDAQ version > 4.0.8
 * VISA backend if connected using GPIB
+* pymeasure version >= 0.14.0 needed (if not yet available install from its github repository)
 
