@@ -19,7 +19,7 @@ for dev in devices:
         break
 
 
-class DAQ_0DViewer_SR830(DAQ_Viewer_base):
+class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
     """ Instrument plugin class for a OD viewer.
     
     This object inherits all functionalities to communicate with PyMoDAQ’s DAQ_Viewer module through inheritance via
@@ -142,20 +142,10 @@ class DAQ_0DViewer_SR830(DAQ_Viewer_base):
         kwargs: dict
             others optionals arguments
         """
-        self.controller.clear()
-        rate = self.settings['acq', 'sampling_rate']
-        self.controller.reset_buffer()
-        start = perf_counter()
-        self.controller.start_buffer()
-        COUNTS = 10
-        self.controller.wait_for_buffer(COUNTS, timeout=60, timestep=0.01)
-        print(f'acq time: {perf_counter() - start}s, should be: {COUNTS / rate}')
-        ch1 = self.controller.get_buffer(1)
-        ch2 = self.controller.get_buffer(2)
-        self.controller.start_buffer(False)
 
-        selected_channels = self.settings.child('acq', 'channels').value()['selected']
-        data_list_array = [np.array([snapped]) for snapped in self.controller.snap(*selected_channels)]
+        selected_channels = self.settings['acq', 'channels']['selected']
+        snapped_list = self.controller.snap(*selected_channels)[:len(selected_channels)]
+        data_list_array = [np.array([snapped]) for snapped in snapped_list]
         dwas = self.create_dwas(data_list_array)
 
         self.dte_signal.emit(DataToExport(name='SR830', data=dwas))
@@ -172,7 +162,7 @@ class DAQ_0DViewer_SR830(DAQ_Viewer_base):
         -------
         List[DataFromPlugins]
         """
-        selected_channels = self.settings.child('acq', 'channels').value()['selected']
+        selected_channels = self.settings['acq', 'channels']['selected']
         if self.settings['acq', 'separate_viewers']:
 
             dwas = [DataFromPlugins(f'SR830:{selected_channels[ind]}',
