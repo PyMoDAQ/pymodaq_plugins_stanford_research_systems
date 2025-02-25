@@ -15,6 +15,7 @@ dependencies = [
     "pymodaq>=4.0.0",
     "pyvisa",
     "pymodaq_utils",
+    "pymeasure",
 ]
 
 authors = [
