@@ -17,9 +17,8 @@ from pyqtgraph.parametertree.Parameter import registerParameterType
 from pyqtgraph.parametertree.parameterTypes.basetypes import GroupParameter
 
 from pymodaq_plugins_stanford_research_systems.hardware.sr_830_thread_safe import SR830ThreadSafe
-
-#CHANNELS = ['x', 'y', 'mag', 'phase', 'adc1', 'adc2', 'adc3']
-CHANNELS = ['x', 'y']
+]
+CHANNELS = ['x', 'y','magnitude','theta']
 rm = pyvisa.ResourceManager()
 VISA_RESOURCES = rm.list_resources()
 ADAPTERS = dict(VISA=VISAAdapter, Prologix=PrologixAdapter)
@@ -39,7 +38,7 @@ class ChannelGroup(GroupParameter):
     def addNew(self) -> None:
         """Add new channel to viewer
         """
-        name_prefix = 'SR380Ch'
+        name_prefix = 'channel'
 
         child_indexes = [int(par.name()[len(name_prefix) + 1:])
                          for par in self.children()]
