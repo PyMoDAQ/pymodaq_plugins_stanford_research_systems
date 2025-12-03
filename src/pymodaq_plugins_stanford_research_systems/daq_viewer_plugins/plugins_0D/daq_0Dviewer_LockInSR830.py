@@ -1,22 +1,67 @@
-from typing import List
-from time import perf_counter
-from qtpy.QtCore import QThread
+from typing import Tuple
+
+import pyvisa
 import numpy as np
-from pymodaq.utils.daq_utils import ThreadCommand
+
+from pymeasure.adapters import VISAAdapter, PrologixAdapter
+
+from pymodaq.control_modules.viewer_utility_classes import (
+    DAQ_Viewer_base,
+    comon_parameters,
+    main
+)
+from pymodaq.utils.parameter import Parameter, utils
 from pymodaq.utils.data import DataFromPlugins, DataToExport
-from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, comon_parameters, main
-from pymodaq.utils.parameter import Parameter
 
-from pymeasure.instruments.srs.sr830 import SR830
-from pyvisa import ResourceManager
+from pyqtgraph.parametertree.Parameter import registerParameterType
+from pyqtgraph.parametertree.parameterTypes.basetypes import GroupParameter
 
-VISA_rm = ResourceManager()
-devices = list(VISA_rm.list_resources())
-device = ''
-for dev in devices:
-    if 'GPIB' in dev:
-        device = dev
-        break
+from pymodaq_plugins_stanford_research_systems.hardware.sr_830_thread_safe import SR830ThreadSafe
+
+#CHANNELS = ['x', 'y', 'mag', 'phase', 'adc1', 'adc2', 'adc3']
+CHANNELS = ['x', 'y']
+rm = pyvisa.ResourceManager()
+VISA_RESOURCES = rm.list_resources()
+ADAPTERS = dict(VISA=VISAAdapter, Prologix=PrologixAdapter)
+
+for channel in CHANNELS:
+    assert hasattr(SR830ThreadSafe, channel)
+
+class ChannelGroup(GroupParameter):
+    """Group Parameter listing the different output
+    """
+
+    def __init__(self, **opts) -> None:
+        opts['type'] = 'sr830channel'
+        opts['addText'] = "Add Channel"
+        super().__init__(**opts)
+
+    def addNew(self) -> None:
+        """Add new channel to viewer
+        """
+        name_prefix = 'SR380Ch'
+
+        child_indexes = [int(par.name()[len(name_prefix) + 1:])
+                         for par in self.children()]
+
+        if child_indexes == []:
+            newindex = 0
+        else:
+            newindex = max(child_indexes) + 1
+
+        child = {
+            'title': f'Measure {newindex:02.0f}',
+            'name': f'{name_prefix}{newindex:02.0f}',
+            'type': 'itemselect',
+            'removable': True,
+            'value': dict(all_items=CHANNELS, selected=CHANNELS[0])
+        }
+
+        self.addChild(child)
+
+
+registerParameterType('sr830channel', ChannelGroup, override=True)
+
 
 
 class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
@@ -32,31 +77,18 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
          hardware library.
 
     """
-    channels = ['X', 'Y', 'R', 'Theta', 'Aux In 1',
-                'Aux In 2', 'Aux In 3', 'Aux In 4', 'Frequency', 'CH1', 'CH2']
 
-    params = comon_parameters + [
-        {'title': 'VISA:', 'name': 'device', 'type': 'list', 'limits': devices, 'value': device},
-        {'title': 'ID:', 'name': 'id', 'type': 'str', 'value': ""},
-        {'title': 'Acquisition:', 'name': 'acq', 'type': 'group', 'children': [
-            {'title': 'Use Trigger:', 'name': 'trigger', 'type': 'bool', 'value': False},
-            {'title': 'Channels in separate viewer:', 'name': 'separate_viewers', 'type': 'bool', 'value': True},
-            {'title': 'Channels:', 'name': 'channels', 'type': 'itemselect',
-             'value': dict(all_items=channels, selected=['CH1', 'CH2'])},
-            {'title': 'Sampling (Hz):', 'name': 'sampling_rate', 'type': 'list', 'limits': SR830.SAMPLE_FREQUENCIES},
-            ]},
-        {'title': 'Configuration:', 'name': 'config', 'type': 'group', 'children': [
-            {'title': 'Reset:', 'name': 'reset', 'type': 'bool_push', 'value': False},
-            {'title': 'Setup number:', 'name': 'setup_number', 'type': 'int', 'value': 1, 'min': 1, 'max': 9},
-            {'title': 'Save setup:', 'name': 'save_setup', 'type': 'bool_push', 'value': False,
-             'label': 'Save'},
-            {'title': 'Load setup:', 'name': 'load_setup', 'type': 'bool_push', 'value': False,
-             'label': 'Load'},
-        ]},
-    ]
+    params = [
+        {'title': 'Adapter', 'name': 'adapter', 'type': 'list',
+         'limits': list(ADAPTERS.keys())},
+        {'title': 'VISA Address:', 'name': 'address', 'type': 'list',
+         'limits': VISA_RESOURCES},
+        {'title': 'ID:', 'name': 'id', 'type': 'str'},
+        {'title': 'Channels:', 'name': 'channels', 'type': 'sr830channel'}
+    ] + comon_parameters
 
-    def ini_attributes(self):
-        self.controller: SR830 = None
+    def ini_attributes(self) -> None:
+        self.controller: SR830ThreadSafe = None
 
     def commit_settings(self, param: Parameter):
         """Apply the consequences of a change of value in the detector settings
@@ -66,30 +98,33 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
         param: Parameter
             A given parameter (within detector_settings) whose value has been changed by the user
         """
-        if param.name() == 'load_setup':
-            self.controller.load_setup(self.settings['config', 'setup_number'])
-            param.setValue(False)
 
-        elif param.name() == 'save_setup':
-            self.controller.save_setup(self.settings['config', 'setup_number'])
-            param.setValue(False)
+        def commit_settings(self, param: Parameter) -> None:
+            """Apply the consequences of a change of value in the detector settings
 
-        elif param.name() == 'channels':
-            selected_channels = param.value()['selected']
-            data_list_array = [np.array([0.]) for _ in range(len(selected_channels))]
-            dwas = self.create_dwas(data_list_array)
-            self.dte_signal.emit(DataToExport(name='SR830', data=dwas))
-
-        elif param.name() == 'reset':
-            self.controller.reset()
-            param.setValue(False)
-
-        elif param.name() == 'trigger':
-            self.controller.aquireOnTrigger(param.value())
-
-        elif param.name() == 'sampling_rate':
-            self.controller.sample_frequency = param.value()
-            param.setValue(self.controller.sample_frequency)  # check it
+            Parameters
+            ----------
+            param: Parameter
+                A given parameter (within detector_settings) whose value has been
+                changed by the user
+            """
+            if param.name() in utils.iter_children(
+                    self.settings.child('channels'), []):
+                data = []
+                for child in self.settings.child('channels').children():
+                    labels = child.value()['selected']
+                    data.append(
+                        DataFromPlugins(
+                            name=child.name(),
+                            data=[np.array([0]) for _ in labels],
+                            labels=labels,
+                            dim='Data0D'
+                        )
+                    )
+                self.dte_signal_temp.emit(DataToExport(
+                    name="lockinsr830",
+                    data=data
+                ))
 
     def ini_detector(self, controller=None):
         """Detector communication initialization
@@ -107,29 +142,40 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
             False if initialization failed otherwise True
         """
 
-        if self.settings['controller_status'] == "Slave":
-            if controller is None:
-                raise Exception('no controller has been defined externally while this axe is a slave one')
-            else:
-                controller = controller
-        else:  # Master stage
-            controller = SR830(self.settings['device'])
-        self.controller = controller
+        self.ini_detector_init(slave_controller=controller)
 
-        self.controller.reset_buffer()
-        self.controller.start_buffer(False)
+        if self.is_master:
+            adapter = ADAPTERS[self.settings.child('adapter').value()](
+                self.settings.child('address').value()
+            )
+            self.controller = SR830ThreadSafe(adapter)
 
-        self.settings.child('acq', 'sampling_rate').setValue(self.controller.sample_frequency)
-        info = self.controller.id
-        self.settings.child('id').setValue(info)
-        initialized = True
+        self.dte_signal_temp.emit(
+            DataToExport(
+                name="lockinsr830",
+                data=[
+                    DataFromPlugins(
+                        name="lockinsr830",
+                        data=[np.array([0]), np.array([0])],
+                        dim="Data0D",
+                        labels=["x", "y"]
+                    )
+                ]
+            )
+        )
+
+        try:
+            info = self.controller.id
+            initialized = True
+        except:
+            info = ""
+            initialized = False
+
         return info, initialized
 
     def close(self):
         """Terminate the communication protocol"""
-        if self.controller is not None:
-            self.controller.clear()
-            self.controller.shutdown()
+        pass
 
     def grab_data(self, Naverage=1, **kwargs):
         """Start a grab from the detector
@@ -143,36 +189,21 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
             others optionals arguments
         """
 
-        selected_channels = self.settings['acq', 'channels']['selected']
-        snapped_list = self.controller.snap(*selected_channels)[:len(selected_channels)]
-        data_list_array = [np.array([snapped]) for snapped in snapped_list]
-        dwas = self.create_dwas(data_list_array)
-
-        self.dte_signal.emit(DataToExport(name='SR830', data=dwas))
-
-    def create_dwas(self, data_list_array: List[np.ndarray]) -> List[DataFromPlugins]:
-        """ Create a list of DataFromPlugins according to the selected channels
-
-        Parameters
-        ----------
-        data_list_array: List[np.ndarray]
-            The list of numpy ndarray to put into a list of DataFromPlugins
-
-        Returns
-        -------
-        List[DataFromPlugins]
-        """
-        selected_channels = self.settings['acq', 'channels']['selected']
-        if self.settings['acq', 'separate_viewers']:
-
-            dwas = [DataFromPlugins(f'SR830:{selected_channels[ind]}',
-                                   data=[array],
-                                   labels=[selected_channels[ind]]) for ind, array in enumerate(data_list_array)]
-        else:
-            dwas = [DataFromPlugins('SR830',
-                                    data=data_list_array,
-                                    labels=selected_channels)]
-        return dwas
+        data = []
+        for child in self.settings.child('channels').children():
+            labels = child.value()['selected'][:]
+            subdata = [np.array([getattr(self.controller, label)])
+                       for label in labels]
+            data.append(DataFromPlugins(
+                name=child.name(),
+                data=subdata,
+                labels=labels,
+                dim='Data0D'
+            ))
+        self.dte_signal.emit(DataToExport(
+            name="lockinsr830",
+            data=data
+        ))
 
     def stop(self):
         """Stop the current grab hardware wise if necessary"""
