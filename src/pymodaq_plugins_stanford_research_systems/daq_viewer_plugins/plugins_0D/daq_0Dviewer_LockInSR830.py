@@ -17,7 +17,7 @@ from pyqtgraph.parametertree.Parameter import registerParameterType
 from pyqtgraph.parametertree.parameterTypes.basetypes import GroupParameter
 
 from pymodaq_plugins_stanford_research_systems.hardware.sr_830_thread_safe import SR830ThreadSafe
-]
+
 CHANNELS = ['x', 'y','magnitude','theta']
 rm = pyvisa.ResourceManager()
 VISA_RESOURCES = rm.list_resources()
@@ -89,41 +89,31 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
     def ini_attributes(self) -> None:
         self.controller: SR830ThreadSafe = None
 
-    def commit_settings(self, param: Parameter):
+    def commit_settings(self, param: Parameter) -> None:
         """Apply the consequences of a change of value in the detector settings
 
         Parameters
-        ----------
-        param: Parameter
-            A given parameter (within detector_settings) whose value has been changed by the user
-        """
-
-        def commit_settings(self, param: Parameter) -> None:
-            """Apply the consequences of a change of value in the detector settings
-
-            Parameters
             ----------
-            param: Parameter
-                A given parameter (within detector_settings) whose value has been
-                changed by the user
+        param: Parameter
+        A given parameter (within detector_settings) whose value has been
+        changed by the user
             """
-            if param.name() in utils.iter_children(
-                    self.settings.child('channels'), []):
-                data = []
-                for child in self.settings.child('channels').children():
-                    labels = child.value()['selected']
-                    data.append(
-                        DataFromPlugins(
-                            name=child.name(),
-                            data=[np.array([0]) for _ in labels],
-                            labels=labels,
-                            dim='Data0D'
-                        )
-                    )
-                self.dte_signal_temp.emit(DataToExport(
-                    name="lockinsr830",
-                    data=data
-                ))
+        if param.name() in utils.iter_children(self.settings.child('channels'), []):
+            data = []
+            for child in self.settings.child('channels').children():
+                labels = child.value()['selected']
+                data.append(
+                    DataFromPlugins(
+                        name=child.name(),
+                        data=[np.array([0]) for _ in labels],
+                        labels=labels,
+                        dim='Data0D'
+                )
+            )
+        self.dte_signal_temp.emit(DataToExport(
+            name="lockinsr830",
+            data=data
+        ))
 
     def ini_detector(self, controller=None):
         """Detector communication initialization
