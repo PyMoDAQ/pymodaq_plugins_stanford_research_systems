@@ -1,43 +1,40 @@
 from typing import List
-from time import perf_counter
-from qtpy.QtCore import QThread
+
 import numpy as np
-from pymodaq.utils.daq_utils import ThreadCommand
-from pymodaq.utils.data import DataFromPlugins, DataToExport
+
+from pymodaq_data.data import DataToExport
+from pymodaq_gui.parameter import Parameter
+
 from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, comon_parameters, main
-from pymodaq.utils.parameter import Parameter
+from pymodaq.utils.data import DataFromPlugins
 
 from pymeasure.instruments.srs.sr830 import SR830
-from pyvisa import ResourceManager
 
-VISA_rm = ResourceManager()
-devices = list(VISA_rm.list_resources())
-device = ''
-for dev in devices:
-    if 'GPIB' in dev:
-        device = dev
-        break
+from pymodaq_plugins_stanford_research_systems.hardware import sr830
 
 
 class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
-    """ Instrument plugin class for a OD viewer.
-    
-    This object inherits all functionalities to communicate with PyMoDAQ’s DAQ_Viewer module through inheritance via
-    DAQ_Viewer_base. It makes a bridge between the DAQ_Viewer module and the Python wrapper of a particular instrument.
+    """ Stanford Research Systems SR830 lock-in amplifier, 0D detector (one value per channel).
+
+    The instrument is driven with the ``pymeasure`` driver ``SR830``. Several channels of the instrument can be
+    recorded together (``SNAP``), in one viewer or in a viewer each.
+
+    Compatible instruments: SR830 (GPIB, or RS232 through VISA). Tested only against a fake of the driver, not on a
+    real instrument.
+    Installation: a VISA backend (NI-VISA, or ``pyvisa-py``) and a GPIB interface for GPIB.
 
     Attributes:
     -----------
-    controller: object
-        The particular object that allow the communication with the hardware, in general a python wrapper around the
-         hardware library.
-
+    controller: SR830
+        The ``pymeasure`` driver of the instrument, shared with the slave modules of the same controller.
     """
-    channels = ['X', 'Y', 'R', 'Theta', 'Aux In 1',
-                'Aux In 2', 'Aux In 3', 'Aux In 4', 'Frequency', 'CH1', 'CH2']
+    channels = sr830.CHANNELS
 
     params = comon_parameters + [
-        {'title': 'VISA:', 'name': 'device', 'type': 'list', 'limits': devices, 'value': device},
-        {'title': 'ID:', 'name': 'id', 'type': 'str', 'value': ""},
+        {'title': 'VISA:', 'name': 'device', 'type': 'str', 'value': sr830.DEFAULT_ADDRESS,
+         'tip': 'VISA resource of the lock-in, for instance GPIB0::8::INSTR (see the VISA resources of the computer '
+                'in NI MAX or with pyvisa)'},
+        {'title': 'ID:', 'name': 'id', 'type': 'str', 'value': "", 'readonly': True},
         {'title': 'Acquisition:', 'name': 'acq', 'type': 'group', 'children': [
             {'title': 'Use Trigger:', 'name': 'trigger', 'type': 'bool', 'value': False},
             {'title': 'Channels in separate viewer:', 'name': 'separate_viewers', 'type': 'bool', 'value': True},
@@ -66,30 +63,30 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
         param: Parameter
             A given parameter (within detector_settings) whose value has been changed by the user
         """
-        if param.name() == 'load_setup':
+        if param.name() == 'channels':
+            self.emit_empty_data()
+        elif self.controller is None:
+            return
+        elif param.name() == 'load_setup':
             self.controller.load_setup(self.settings['config', 'setup_number'])
             param.setValue(False)
-
         elif param.name() == 'save_setup':
             self.controller.save_setup(self.settings['config', 'setup_number'])
             param.setValue(False)
-
-        elif param.name() == 'channels':
-            selected_channels = param.value()['selected']
-            data_list_array = [np.array([0.]) for _ in range(len(selected_channels))]
-            dwas = self.create_dwas(data_list_array)
-            self.dte_signal.emit(DataToExport(name='SR830', data=dwas))
-
         elif param.name() == 'reset':
             self.controller.reset()
             param.setValue(False)
-
         elif param.name() == 'trigger':
             self.controller.aquireOnTrigger(param.value())
-
         elif param.name() == 'sampling_rate':
             self.controller.sample_frequency = param.value()
-            param.setValue(self.controller.sample_frequency)  # check it
+            self.show_sampling_rate()  # what the instrument took
+
+    def show_sampling_rate(self):
+        """Show the sampling rate of the instrument (None: it samples on a trigger)"""
+        rate = self.controller.sample_frequency
+        if rate is not None and rate != self.settings['acq', 'sampling_rate']:
+            self.settings.child('acq', 'sampling_rate').setValue(rate)
 
     def ini_detector(self, controller=None):
         """Detector communication initialization
@@ -97,8 +94,7 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
         Parameters
         ----------
         controller: (object)
-            custom object of a PyMoDAQ plugin (Slave case). None if only one actuator/detector by controller
-            (Master case)
+            The ``SR830`` of the master module (Slave case). None if the module is the master.
 
         Returns
         -------
@@ -106,49 +102,43 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
         initialized: bool
             False if initialization failed otherwise True
         """
+        if self.is_master:
+            self.controller = sr830.open_sr830(self.settings['device'])
+            self.controller.reset_buffer()
+            self.controller.start_buffer(False)
+        else:
+            self.controller = controller
 
-        if self.settings['controller_status'] == "Slave":
-            if controller is None:
-                raise Exception('no controller has been defined externally while this axe is a slave one')
-            else:
-                controller = controller
-        else:  # Master stage
-            controller = SR830(self.settings['device'])
-        self.controller = controller
-
-        self.controller.reset_buffer()
-        self.controller.start_buffer(False)
-
-        self.settings.child('acq', 'sampling_rate').setValue(self.controller.sample_frequency)
+        self.show_sampling_rate()
         info = self.controller.id
         self.settings.child('id').setValue(info)
-        initialized = True
-        return info, initialized
+        self.emit_empty_data()
+        return info, True
 
     def close(self):
-        """Terminate the communication protocol"""
-        if self.controller is not None:
+        """Terminate the communication protocol, only the master owns the instrument"""
+        if self.is_master and self.controller is not None:
             self.controller.clear()
             self.controller.shutdown()
+            sr830.close_sr830(self.controller)
 
     def grab_data(self, Naverage=1, **kwargs):
-        """Start a grab from the detector
+        """Record the selected channels at the same instant
 
         Parameters
         ----------
         Naverage: int
-            Number of hardware averaging (if hardware averaging is possible, self.hardware_averaging should be set to
-            True in class preamble and you should code this implementation)
-        kwargs: dict
-            others optionals arguments
+            Number of averages, done by PyMoDAQ (the instrument does not average the snapshots)
         """
-
         selected_channels = self.settings['acq', 'channels']['selected']
-        snapped_list = self.controller.snap(*selected_channels)[:len(selected_channels)]
-        data_list_array = [np.array([snapped]) for snapped in snapped_list]
-        dwas = self.create_dwas(data_list_array)
+        values = sr830.snap(self.controller, selected_channels)
+        self.dte_signal.emit(DataToExport(name='SR830', data=self.create_dwas([np.array([value]) for value in values])))
 
-        self.dte_signal.emit(DataToExport(name='SR830', data=dwas))
+    def emit_empty_data(self):
+        """Show the viewers of the selected channels before the first grab"""
+        n_channels = len(self.settings['acq', 'channels']['selected'])
+        self.dte_signal_temp.emit(DataToExport(
+            name='SR830', data=self.create_dwas([np.array([0.]) for _ in range(n_channels)])))
 
     def create_dwas(self, data_list_array: List[np.ndarray]) -> List[DataFromPlugins]:
         """ Create a list of DataFromPlugins according to the selected channels
@@ -164,18 +154,13 @@ class DAQ_0DViewer_LockInSR830(DAQ_Viewer_base):
         """
         selected_channels = self.settings['acq', 'channels']['selected']
         if self.settings['acq', 'separate_viewers']:
-
-            dwas = [DataFromPlugins(f'SR830:{selected_channels[ind]}',
-                                   data=[array],
-                                   labels=[selected_channels[ind]]) for ind, array in enumerate(data_list_array)]
-        else:
-            dwas = [DataFromPlugins('SR830',
-                                    data=data_list_array,
-                                    labels=selected_channels)]
-        return dwas
+            return [DataFromPlugins(f'SR830:{channel}', data=[array], dim='Data0D', labels=[channel],
+                                    units=sr830.CHANNEL_UNITS[channel])
+                    for channel, array in zip(selected_channels, data_list_array)]
+        return [DataFromPlugins('SR830', data=data_list_array, dim='Data0D', labels=selected_channels)]
 
     def stop(self):
-        """Stop the current grab hardware wise if necessary"""
+        """Nothing to stop: the grab is a snapshot"""
         return ''
 
 

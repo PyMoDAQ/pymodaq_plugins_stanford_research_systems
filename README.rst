@@ -38,14 +38,17 @@ Below is the list of instruments included in this plugin
 Viewer0D
 ++++++++
 
-* * **LockinSR830Legacy**: LockIn Amplifier SR830 (legacy implementation)
-* * **LockinSR830**: LockIn Amplifier SR830 (uses the pymeasure driver and is recommended)
+* **LockInSR830**: LockIn Amplifier SR830 (uses the pymeasure driver and is recommended)
 
+Viewer1D
+++++++++
+
+* **LockInSR830**: LockIn Amplifier SR830, buffer of the instrument (CH1 and CH2) with a time axis
 
 
 Installation instructions
 =========================
 
-* PyMoDAQ version > 4.0.8
-* VISA backend if connected using GPIB
+* PyMoDAQ version >= 5.3.2
+* A VISA backend (NI-VISA, or pyvisa-py) to connect through GPIB or RS232
 
