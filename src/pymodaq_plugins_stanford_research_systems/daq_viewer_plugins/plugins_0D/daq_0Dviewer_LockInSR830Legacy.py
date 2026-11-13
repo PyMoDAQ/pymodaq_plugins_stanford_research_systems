@@ -1,59 +1,37 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Jun 14 15:14:54 2018
-
-@author: Weber Sébastien
-@email: seba.weber@gmail.com
-"""
-from qtpy.QtCore import Signal
-from easydict import EasyDict as edict
-
-from pymodaq.utils.daq_utils import ThreadCommand, getLineInfo
-from pymodaq.utils.data import DataFromPlugins
-from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, main, comon_parameters
-from collections import OrderedDict
-
 import numpy as np
-import re
 
-##checking VISA ressources
-try:
-    from pyvisa import ResourceManager
+from pymodaq_data.data import DataToExport
+from pymodaq_gui.parameter import Parameter
 
-    VISA_rm = ResourceManager()
-    devices = list(VISA_rm.list_resources())
-    device = ''
-    for dev in devices:
-        if 'GPIB' in dev:
-            device = dev
-            break
-except Exception as e:
-    devices = []
-    device = ''
-    raise e
+from pymodaq.control_modules.viewer_utility_classes import DAQ_Viewer_base, main, comon_parameters
+from pymodaq.utils.data import DataFromPlugins
+
+from pymodaq_plugins_stanford_research_systems.hardware import sr830
 
 
 class DAQ_0DViewer_LockInSR830Legacy(DAQ_Viewer_base):
+    """ Stanford Research Systems SR830 lock-in amplifier, 0D detector, sending the SCPI-like commands itself.
+
+    Kept for the experiments saved with it (same settings and channel names as before); the plugin
+    ``LockInSR830``, which uses the ``pymeasure`` driver, is the recommended one.
+
+    Compatible instruments: SR830. Tested only against a fake of the VISA resource, not on a real instrument.
+    Installation: a VISA backend (NI-VISA, or ``pyvisa-py``) and a GPIB interface for GPIB.
+
+    Attributes:
+    -----------
+    controller: pyvisa.resources.Resource
+        The VISA session of the instrument, shared with the slave modules of the same controller.
     """
-        ==================== ========================
-        **Attributes**        **Type**
-        *data_grabed_signal*  instance of Signal
-        *VISA_rm*             ResourceManager
-        *com_ports*           
-        *params*              dictionnary list
-        *inst*
-        *settings*
-        ==================== ========================
-    """
-    data_grabed_signal = Signal(list)
     channels = ['X', 'Y', 'MAG', 'PHA', 'Aux In 1', 'Aux In 2', 'Aux In 3', 'Aux In 4', 'Ref frequency', 'CH1 display',
-                'CH2 display']
+                'CH2 display']  # in the order of the answer of SNAP ? 1,2,...,11
 
     params = comon_parameters + [
-        {'title': 'VISA:', 'name': 'VISA_ressources', 'type': 'list', 'limits': devices, 'value': device},
-        {'title': 'Manufacturer:', 'name': 'manufacturer', 'type': 'str', 'value': ""},
-        {'title': 'Serial number:', 'name': 'serial_number', 'type': 'str', 'value': ""},
-        {'title': 'Model:', 'name': 'model', 'type': 'str', 'value': ""},
+        {'title': 'VISA:', 'name': 'VISA_ressources', 'type': 'str', 'value': sr830.DEFAULT_ADDRESS,
+         'tip': 'VISA resource of the lock-in, for instance GPIB0::8::INSTR'},
+        {'title': 'Manufacturer:', 'name': 'manufacturer', 'type': 'str', 'value': "", 'readonly': True},
+        {'title': 'Serial number:', 'name': 'serial_number', 'type': 'str', 'value': "", 'readonly': True},
+        {'title': 'Model:', 'name': 'model', 'type': 'str', 'value': "", 'readonly': True},
         {'title': 'Timeout (ms):', 'name': 'timeout', 'type': 'int', 'value': 2000, 'default': 2000, 'min': 1000},
         {'title': 'Configuration:', 'name': 'config', 'type': 'group', 'children': [
             {'title': 'Reset:', 'name': 'reset', 'type': 'bool_push', 'value': False},
@@ -61,174 +39,88 @@ class DAQ_0DViewer_LockInSR830Legacy(DAQ_Viewer_base):
             {'title': 'Channels:', 'name': 'channels', 'type': 'itemselect',
              'value': dict(all_items=channels, selected=['MAG', 'PHA'])},
             {'title': 'Setup:', 'name': 'setup', 'type': 'group', 'children': [
-                {'title': 'Setup number:', 'name': 'setup_number', 'type': 'int', 'value': 0},
-                {'title': 'Save setup:', 'name': 'save_setup', 'type': 'bool', 'value': False},
-                {'title': 'Load setup:', 'name': 'load_setup', 'type': 'bool', 'value': False}, ]}
+                {'title': 'Setup number:', 'name': 'setup_number', 'type': 'int', 'value': 1, 'min': 1, 'max': 9},
+                {'title': 'Save setup:', 'name': 'save_setup', 'type': 'bool_push', 'value': False},
+                {'title': 'Load setup:', 'name': 'load_setup', 'type': 'bool_push', 'value': False}, ]}
         ]},
     ]
 
-    def __init__(self, parent=None, params_state=None):
-        super().__init__(parent, params_state)
+    def ini_attributes(self):
         self.controller = None
 
-    def query_data(self, cmd):
-        try:
-            res = self.controller.query(cmd)
-            searched = re.search('\n', res)
-            status_byte = res[searched.start() + 1]
-            overload_byte = res[searched.start() + 3]
-            if searched.start != 0:
-                data = np.array([float(x) for x in res[0:searched.start()].split(",")])
-            else:
-                data = None
-            return (status_byte, overload_byte, data)
-        except:
-            return ('\x01', '\x00', None)
-
-    def query_string(self, cmd):
-        try:
-            res = self.controller.query(cmd)
-            searched = re.search('\n', res)
-            status_byte = res[searched.start() + 1]
-            overload_byte = res[searched.start() + 3]
-            if searched.start != 0:
-                str = res[0:searched.start()]
-            else:
-                str = ""
-            return (status_byte, overload_byte, str)
-        except:
-            return ('\x01', '\x00', "")
-
     def ini_detector(self, controller=None):
+        """Open the VISA session (master) or take the one of the master (slave)
+
+        Returns
+        -------
+        info: str
+        initialized: bool
         """
-            Initialisation procedure of the detector.
-
-            Returns
-            -------
-
-                The initialized status.
-
-            See Also
-            --------
-            daq_utils.ThreadCommand
-        """
-        self.status.update(edict(initialized=False, info="", x_axis=None, y_axis=None, controller=None))
-        try:
-
-            if self.settings.child(('controller_status')).value() == "Slave":
-                if controller is None:
-                    raise Exception('no controller has been defined externally while this detector is a slave one')
-                else:
-                    self.controller = controller
-            else:
-                VISA_rm = ResourceManager()
-                self.controller = VISA_rm.open_resource(self.settings.child(('VISA_ressources')).value())
-
-            self.controller.timeout = self.settings.child(('timeout')).value()
-            idn = self.controller.query('OUTX1;*IDN?;')
-            idn = idn.rstrip('\n')
-            idn = idn.rsplit(',')
-            if len(idn) >= 0:
-                self.settings.child(('manufacturer')).setValue(idn[0])
-            if len(idn) >= 1:
-                self.settings.child(('model')).setValue(idn[1])
-            if len(idn) >= 2:
-                self.settings.child(('serial_number')).setValue(idn[2])
-
-            # self.reset()
-
-            self.status.controller = self.controller
-            self.status.initialized = True
-            return self.status
-
-        except Exception as e:
-            self.emit_status(ThreadCommand('Update_Status', [getLineInfo() + str(e), 'log']))
-            self.status.info = getLineInfo() + str(e)
-            self.status.initialized = False
-            return self.status
-
-    def reset(self):
-        self.controller.write('*RST')
-
-    def grab_data(self, Naverage=1, **kwargs):
-        """
-            | Start new acquisition.
-            | grab the current values.
-            | Send the data_grabed_signal once done.
-
-            =============== ======== ===============================================
-            **Parameters**  **Type**  **Description**
-            *Naverage*      int       Number of values to average
-            =============== ======== ===============================================
-        """
-        data_tot = []
-        data = self.controller.query_ascii_values('SNAP ? 1,2,3,4,5,6')
-        data.extend(self.controller.query_ascii_values('SNAP ? 7,8,9,10,11'))
-        selected_channels = self.settings.child('config', 'channels').value()['selected']
-        data_to_export = [np.array([data[ind]]) for ind in [self.channels.index(sel) for sel in selected_channels]]
-
-        if self.settings.child('config', 'separate_viewers').value():
-            for ind_channel, dat in enumerate(data_to_export):
-                data_tot.append(DataFromPlugins(name=selected_channels[ind_channel], data=[dat], dim='Data0D',
-                                                labels=[selected_channels[ind_channel]]))
-            self.data_grabed_signal.emit(data_tot)
+        if self.is_master:
+            self.controller = sr830.open_visa(self.settings['VISA_ressources'], self.settings['timeout'])
         else:
-            self.data_grabed_signal.emit(
-                [DataFromPlugins(name='SR830', data=data_to_export, dim='Data0D', labels=selected_channels)])
+            self.controller = controller
 
-    def commit_settings(self, param):
-        """
-            Activate the parameters changes in the hardware.
-
-            =============== ================================= ============================
-            **Parameters**   **Type**                         **Description**
-            *param*         instance of pyqtgraph.parameter   The parameter to be checked.
-            =============== ================================= ============================
-
-            See Also
-            --------
-            daq_utils.ThreadCommand
-        """
-        try:
-            if param.name() == 'timeout':
-                self.controller.timeout = self.settings.child(('timeout')).value()
-
-            if param.name() == 'load_setup':
-                self.controller.write(
-                    'RSET{:d};'.format(self.settings.child('config', 'setup', 'setup_number').value()))
-                param.setValue(False)
-
-            if param.name() == 'save_setup':
-                self.controller.write(
-                    'SSET{:d};'.format(self.settings.child('config', 'setup', 'setup_number').value()))
-                param.setValue(False)
-
-            elif param.name() == 'channels':
-                data_init = []
-                for channel in param.value()['selected']:
-                    if self.settings.child('config', 'separate_viewers').value():
-                        data_init.append(DataFromPlugins(name=channel, data=[np.array([0])], dim='Data0D'))
-                    else:
-                        data_init.append(np.array([0]))
-                if self.settings.child('config', 'separate_viewers').value():
-                    self.data_grabed_signal_temp.emit(data_init)
-                else:
-                    self.data_grabed_signal_temp.emit([DataFromPlugins(name='SR830', data=data_init, dim='Data0D')])
-            elif param.name() == 'reset':
-                self.reset()
-                param.setValue(False)
-
-        except Exception as e:
-            self.emit_status(ThreadCommand('Update_Status', [getLineInfo() + str(e), 'log']))
+        idn = self.controller.query('OUTX1;*IDN?;').rstrip('\n').split(',')  # manufacturer, model, serial, firmware
+        for name, value in zip(('manufacturer', 'model', 'serial_number'), idn):
+            self.settings.child(name).setValue(value)
+        self.emit_empty_data()
+        return ','.join(idn), True
 
     def close(self):
+        """Close the VISA session, only the master owns it"""
+        if self.is_master and self.controller is not None:
+            self.controller.close()
+
+    def grab_data(self, Naverage=1, **kwargs):
+        """Record the selected channels at the same instant
+
+        Parameters
+        ----------
+        Naverage: int
+            Number of averages, done by PyMoDAQ
         """
-            close the current instance of the visa session.
-        """
-        self.controller.close()
+        values = self.controller.query_ascii_values('SNAP ? 1,2,3,4,5,6')  # SNAP records 2 to 6 values at once
+        values.extend(self.controller.query_ascii_values('SNAP ? 7,8,9,10,11'))
+        selected_channels = self.settings['config', 'channels']['selected']
+        data = [np.array([values[self.channels.index(channel)]]) for channel in selected_channels]
+        self.dte_signal.emit(DataToExport(name='SR830', data=self.create_dwas(data)))
+
+    def emit_empty_data(self):
+        """Show the viewers of the selected channels before the first grab"""
+        n_channels = len(self.settings['config', 'channels']['selected'])
+        self.dte_signal_temp.emit(DataToExport(
+            name='SR830', data=self.create_dwas([np.array([0.]) for _ in range(n_channels)])))
+
+    def create_dwas(self, data):
+        """The data of the selected channels, in a viewer each or all in one"""
+        selected_channels = self.settings['config', 'channels']['selected']
+        if self.settings['config', 'separate_viewers']:
+            return [DataFromPlugins(name=channel, data=[array], dim='Data0D', labels=[channel])
+                    for channel, array in zip(selected_channels, data)]
+        return [DataFromPlugins(name='SR830', data=data, dim='Data0D', labels=selected_channels)]
+
+    def commit_settings(self, param: Parameter):
+        """Apply the consequences of a change of value in the detector settings"""
+        if param.name() == 'channels':
+            self.emit_empty_data()
+        elif self.controller is None:
+            return
+        elif param.name() == 'timeout':
+            self.controller.timeout = param.value()
+        elif param.name() == 'load_setup':
+            self.controller.write('RSET{:d};'.format(self.settings['config', 'setup', 'setup_number']))
+            param.setValue(False)
+        elif param.name() == 'save_setup':
+            self.controller.write('SSET{:d};'.format(self.settings['config', 'setup', 'setup_number']))
+            param.setValue(False)
+        elif param.name() == 'reset':
+            self.controller.write('*RST')
+            param.setValue(False)
 
     def stop(self):
-        pass
+        """Nothing to stop: the grab is a snapshot"""
+        return ''
 
 
 if __name__ == '__main__':
