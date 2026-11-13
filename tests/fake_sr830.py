@@ -67,25 +67,3 @@ class FakeSR830:
     def aquireOnTrigger(self, enable=True):
         self.calls.append(('aquireOnTrigger', enable))
 
-
-class FakeVisa:
-    """A VISA session answering ``*IDN?`` and ``SNAP ?`` like the instrument"""
-    timeout = 2000
-
-    def __init__(self):
-        self.is_open = True
-        self.written = []
-
-    def query(self, command):
-        assert command.startswith('OUTX1;*IDN?')
-        return 'Stanford_Research_Systems,SR830,s/n00001,ver1.07\n'
-
-    def query_ascii_values(self, command):
-        assert command.startswith('SNAP ?')
-        return [float(index) for index in command.split('?')[1].split(',')]  # the value of a channel is its number
-
-    def write(self, command):
-        self.written.append(command)
-
-    def close(self):
-        self.is_open = False

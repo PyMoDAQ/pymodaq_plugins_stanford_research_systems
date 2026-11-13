@@ -7,18 +7,15 @@ from pymodaq.utils.plugin_testing.harness import _instantiate
 from pymodaq_plugins_stanford_research_systems.hardware import sr830
 from pymodaq_plugins_stanford_research_systems.daq_viewer_plugins.plugins_0D.daq_0Dviewer_LockInSR830 import (
     DAQ_0DViewer_LockInSR830)
-from pymodaq_plugins_stanford_research_systems.daq_viewer_plugins.plugins_0D.daq_0Dviewer_LockInSR830Legacy import (
-    DAQ_0DViewer_LockInSR830Legacy)
 from pymodaq_plugins_stanford_research_systems.daq_viewer_plugins.plugins_1D.daq_1Dviewer_LockInSR830 import (
     DAQ_1DViewer_LockInSR830)
 
-from fake_sr830 import FakeSR830, FakeVisa
+from fake_sr830 import FakeSR830
 
 
 @pytest.fixture
 def fake(monkeypatch):
     monkeypatch.setattr(sr830, 'open_sr830', lambda address: FakeSR830(address))
-    monkeypatch.setattr(sr830, 'open_visa', lambda address, timeout_ms=2000: FakeVisa())
 
 
 def test_importing_the_plugins_does_not_need_a_visa_backend():
@@ -102,26 +99,3 @@ class TestSR830Buffer:
             plugin.grab_data()
         plugin.close()
 
-
-class TestSR830Legacy:
-    def test_ini_reads_the_identification(self, qapp, fake):
-        plugin = make_detector(DAQ_0DViewer_LockInSR830Legacy)
-        assert plugin.initialized
-        assert plugin.settings['model'] == 'SR830'
-        assert plugin.settings['manufacturer'] == 'Stanford_Research_Systems'
-        plugin.close()
-
-    def test_grab_selected_channels(self, qapp, fake):
-        plugin = make_detector(DAQ_0DViewer_LockInSR830Legacy)
-        dte = grab_and_wait(plugin)  # MAG and PHA by default
-        assert [dwa.labels for dwa in dte] == [['MAG'], ['PHA']]
-        assert [float(dwa.data[0][0]) for dwa in dte] == [3., 4.]
-        plugin.close()
-
-    def test_only_the_master_closes_the_session(self, qapp, fake):
-        master = make_detector(DAQ_0DViewer_LockInSR830Legacy)
-        slave = make_detector(DAQ_0DViewer_LockInSR830Legacy, controller=master.controller)
-        slave.close()
-        assert master.controller.is_open
-        master.close()
-        assert not master.controller.is_open

@@ -39,7 +39,6 @@ Viewer0D
 ++++++++
 
 * **LockInSR830**: LockIn Amplifier SR830 (uses the pymeasure driver and is recommended)
-* **LockInSR830Legacy**: LockIn Amplifier SR830 (kept for the experiments saved with it, sends the commands itself)
 
 Viewer1D
 ++++++++
